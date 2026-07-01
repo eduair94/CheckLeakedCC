@@ -1,11 +1,22 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "module": "commonjs",
+    "ignoreDeprecations": "6.0",
+    "target": "es2021",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "lib": ["es2021"],
+    "types": ["node", "jest"],
     "declaration": true,
-    "outDir": "./lib",
-    "strict": true
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "**/__tests__/*"]
+  "exclude": ["node_modules", "lib", "src/tests", "**/*.test.ts"]
 }

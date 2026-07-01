@@ -1,12 +1,26 @@
 import 'dotenv/config';
-import LeakCheckCC from '../index';
-test('CheckLeakedCC Experimental API', async () => {
-  const leakCheckCC = new LeakCheckCC(process.env.key as string);
-  const body = {
-    entry: 'test1234@mail.com',
-    type: 'email',
-  };
-  const res = await leakCheckCC.experimental(body.entry, body.type);
-  expect(typeof res.found).toBe('number');
-  return;
-}, 70000);
+import CheckLeakedCC from '../index';
+
+// Live smoke test — only runs when a real bot key is provided via `key` env.
+const key = process.env.key;
+const maybe = key ? test : test.skip;
+
+maybe(
+  'experimental live search returns a numeric found',
+  async () => {
+    const api = new CheckLeakedCC(key as string);
+    const res = await api.experimental('test1234@mail.com', 'email');
+    expect(typeof res.found).toBe('number');
+  },
+  70000,
+);
+
+maybe(
+  'valid returns a plan',
+  async () => {
+    const api = new CheckLeakedCC(key as string);
+    const res = await api.valid();
+    expect(res.success).toBe(true);
+  },
+  30000,
+);

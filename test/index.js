@@ -1,17 +1,12 @@
-const CheckLeakedCC = require('checkleakedcc').default
-require('dotenv').config()
-// Initialize with bot api key
-// Can be found at: https://checkleaked.cc/botLinks
-const api = new CheckLeakedCC(process.env.key)
-const entry = 'test1234@mail.com'
-const page = 1;
-const type = 'email';
+// Quick manual smoke test: `key=YOUR_KEY node test/index.js`
+const CheckLeakedCC = require('../dist/index.js').default;
+require('dotenv').config();
 
-// Experimental Search
-api.experimental(entry, type)
-.then(res => console.log(res))
-.catch(e=> console.error(e))
+const api = new CheckLeakedCC(process.env.key);
 
-// Dehashed Search
-// api.dehashed(entry, type, page)
-// .then(res => console.log(res))
+(async () => {
+  console.log('valid ->', await api.valid());
+  console.log('experimental ->', await api.experimental('test1234@mail.com', 'email'));
+  console.log('leakradar domain summary ->', await api.leakradar.domain.summary('example.com', { light: true }));
+  console.log('tracking limits ->', await api.tracking.limits());
+})().catch((e) => console.error(e));
