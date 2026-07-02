@@ -27,6 +27,7 @@
     "alt_test": "node test/index.js",
     "test": "jest --config jestconfig.json",
     "typecheck": "tsc --noEmit",
+    "codegen": "npx --yes quicktype@latest e2e/qt --just-types -l typescript --no-enums --no-date-times --no-maps -o src/schemas.ts",
     "build": "tsup",
     "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
     "lint": "eslint src",

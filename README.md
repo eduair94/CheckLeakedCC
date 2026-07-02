@@ -260,6 +260,17 @@ try {
 
 ---
 
+## Response types
+
+Every method is fully typed. The public response types (e.g. `DehashedResult`, `EmailSearchResponse`, `LeakDetails`) carry index signatures so they stay forward‑compatible as the API grows. For the exhaustive, sample‑derived nested shapes (generated from live responses with quicktype), reach for the `schemas` namespace:
+
+```ts
+import { schemas, type DomainSummaryResponse } from 'checkleakedcc';
+
+type Whois = schemas.Whois;
+type Leak = schemas.UnlockedLeaksItem;
+```
+
 ## Rate limits
 
 The bot API allows **2 requests/second** per key (and per IP). Space out bulk workloads accordingly; the SDK does not throttle for you.

@@ -2,4 +2,7 @@ node_modules
 /lib
 /dist
 .env
+# Live capture output — contains real breach data (PII). Never commit.
 e2e/out.json
+e2e/samples/
+e2e/qt/

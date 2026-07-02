@@ -57,4 +57,13 @@ export { UnlockedResource } from './leakradar/resources/UnlockedResource';
 // All public types
 export * from './types';
 
+/**
+ * Exhaustive, sample-derived response shapes generated from live API responses
+ * with quicktype. Power users can reach for the precise nested structures:
+ *
+ *     import { schemas } from 'checkleakedcc';
+ *     type Whois = schemas.Whois;
+ */
+export * as schemas from './schemas';
+
 export default CheckLeakedCC;

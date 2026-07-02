@@ -16,7 +16,9 @@ Complete rewrite — full API coverage, typed, modern tooling.
 - **Automatic retries** on 429 (honoring `Retry-After`) and 5xx, with exponential backoff.
 - **Async task helpers**: `unlockAsync` → `leakradar.tasks.pollUntilDone`.
 - Advanced-search filter values are auto-wrapped into arrays (the API requires lists).
-- Full TypeScript types derived from real API responses.
+- Full TypeScript types derived from real API responses; exhaustive
+  sample-generated shapes (via quicktype) are also exported under the
+  `schemas` namespace.
 - **Dual ESM + CommonJS** build with a proper `exports` map; ships `.d.ts` + `.d.mts` and sourcemaps.
 
 ### Changed

@@ -5,7 +5,11 @@
  * every response interface carries an index signature (`[k: string]: any`).
  * You get autocomplete for the well-known fields while still being able to read
  * anything the API returns. Request/option types are stricter to guide callers.
+ *
+ * Response shapes were validated against live API samples via quicktype; the
+ * exhaustive generated interfaces are re-exported under the `schemas` namespace.
  */
+import type { Asn, IPLookupAddress, Passwords, Whois } from './schemas';
 
 // ---------------------------------------------------------------------------
 // Shared
@@ -216,9 +220,9 @@ export interface IpLookupResult {
   latitude?: number;
   longitude?: number;
   timeZone?: string;
-  address?: Record<string, any>;
-  asn?: { start_ip?: string; end_ip?: string; asn?: string; name?: string; domain?: string; [k: string]: any };
-  whois?: Record<string, any>;
+  address?: IPLookupAddress;
+  asn?: Asn;
+  whois?: Whois;
   [k: string]: any;
 }
 
@@ -424,6 +428,10 @@ export interface DomainSummaryResponse {
   third_parties_compromised?: number;
   searched_by_count?: number;
   blacklisted_value?: string | null;
+  /** Password-strength breakdown per audience (omitted when `light` is set). */
+  employee_passwords?: Passwords;
+  customer_passwords?: Passwords;
+  third_parties_passwords?: Passwords;
   [k: string]: any;
 }
 
