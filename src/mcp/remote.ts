@@ -3,7 +3,13 @@
  * (`https://mcp.checkleaked.cc/mcp`, Streamable HTTP transport). Lets SDK
  * users list and call the hosted tools from code without an MCP library.
  */
-import { CheckLeakedApiError, CheckLeakedNetworkError } from '../errors';
+import {
+  CheckLeakedApiError,
+  CheckLeakedAuthError,
+  CheckLeakedNetworkError,
+  CheckLeakedRateLimitError,
+  CheckLeakedServerError,
+} from '../errors';
 import type { HttpClient } from '../http';
 import { readSse } from '../wormgpt/sse';
 import { MCP_PROTOCOL_VERSION } from './protocol';
@@ -211,7 +217,17 @@ export class RemoteMcpClient {
         /* keep text */
       }
       const message = parsed?.error?.message || parsed?.error || `MCP request failed with status ${res.status}`;
-      throw new CheckLeakedApiError({ message: String(message), status: res.status, body: parsed, path: String(body.method) });
+      // Same classes as the REST transport: the hosted server answers a
+      // keyless call to a key-needing tool with 401 + WWW-Authenticate.
+      const ErrorClass =
+        res.status === 401 || res.status === 403
+          ? CheckLeakedAuthError
+          : res.status === 429
+            ? CheckLeakedRateLimitError
+            : res.status >= 500
+              ? CheckLeakedServerError
+              : CheckLeakedApiError;
+      throw new ErrorClass({ message: String(message), status: res.status, body: parsed, path: String(body.method) });
     }
     if (notification || res.status === 202) {
       await res.body?.cancel().catch(() => undefined);

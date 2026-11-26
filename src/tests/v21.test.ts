@@ -589,6 +589,17 @@ describe('review regressions', () => {
     expect(inits).toBe(1);
   });
 
+  test('remote MCP: a hosted 401 (keyless call to a key-needing tool) is a CheckLeakedAuthError', async () => {
+    const { fn } = fakeFetch((_url, init) => {
+      const body = JSON.parse(String(init.body || '{}'));
+      if (body.method === 'initialize') return jsonResponse({ jsonrpc: '2.0', id: body.id, result: {} }, { headers: { 'mcp-session-id': 's1' } });
+      if (body.method === 'notifications/initialized') return new Response(null, { status: 202 });
+      return jsonResponse({ jsonrpc: '2.0', error: { code: -32001, message: 'Sign in to use this tool' }, id: body.id }, { status: 401, headers: { 'www-authenticate': 'Bearer' } });
+    });
+    const mcp = new RemoteMcpClient(new HttpClient({ allowMissingApiKey: true, fetch: fn }));
+    await expect(mcp.callTool('checkleaked_ping')).rejects.toBeInstanceOf(CheckLeakedAuthError);
+  });
+
   test('MCP server: empty batch is an Invalid Request', async () => {
     const server = new CheckLeakedMcpServer({ tools: [] });
     await expect(server.handle([])).resolves.toMatchObject({ error: { code: -32600 } });
