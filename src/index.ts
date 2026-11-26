@@ -8,17 +8,21 @@
  *
  *     const CheckLeakedCC = require('checkleakedcc').default;
  *     const api = new CheckLeakedCC('YOUR-API-KEY');
+ *
+ * MCP server for Claude Desktop / Cursor / VS Code: .
  */
 import { CheckLeakedCC } from './CheckLeakedCC';
 
 export { CheckLeakedCC };
+export { API_KEY_ENV } from './CheckLeakedCC';
+export { SDK_VERSION } from './version';
 
 /** @deprecated Renamed to {@link CheckLeakedCC}. Kept for v1 back-compat. */
 export const LeakCheckCC = CheckLeakedCC;
 
 // Transport + config
-export { HttpClient } from './http';
-export type { CheckLeakedConfig, HttpMethod, IHttpClient, RequestOptions } from './http';
+export { DEFAULT_BASE_URL, DEFAULT_MCP_URL, DEFAULT_SITE_URL, DEFAULT_WORMGPT_URL, HttpClient } from './http';
+export type { ApiBase, AuthMode, CheckLeakedConfig, FetchLike, HttpMethod, IHttpClient, RequestOptions } from './http';
 
 // Error hierarchy
 export {
@@ -29,6 +33,7 @@ export {
   CheckLeakedRateLimitError,
   CheckLeakedServerError,
   CheckLeakedValidationError,
+  errorCodeFromBody,
 } from './errors';
 
 // Resources (exported so advanced users can compose their own client)
@@ -53,6 +58,41 @@ export { RawFilesResource } from './leakradar/resources/RawFilesResource';
 export { RawResource } from './leakradar/resources/RawResource';
 export { TasksResource } from './leakradar/resources/TasksResource';
 export { UnlockedResource } from './leakradar/resources/UnlockedResource';
+export { AiResource } from './resources/AiResource';
+export { BreachesResource } from './resources/BreachesResource';
+export { KanonResource, emailKanonHash, matchPwnedRange, splitPwnedHash } from './resources/KanonResource';
+export { PrivateBotsResource } from './resources/PrivateBotsResource';
+export { NewsResource, SiteResource } from './resources/SiteResource';
+export { WebhooksResource } from './resources/WebhooksResource';
+
+// Webhook receiver helpers
+export {
+  WEBHOOK_DELIVERY_HEADER,
+  WEBHOOK_EVENT_HEADER,
+  WEBHOOK_SIGNATURE_HEADER,
+  parseWebhookSignature,
+  signWebhookPayload,
+  verifyWebhookSignature,
+} from './webhooks';
+export type { VerifyWebhookOptions } from './webhooks';
+
+// WormGPT
+export { WormGPTClient, completionText } from './wormgpt/WormGPTClient';
+export type { WormAskOptions } from './wormgpt/WormGPTClient';
+export { readSse } from './wormgpt/sse';
+export type { SseMessage } from './wormgpt/sse';
+
+// MCP
+export { McpResource } from './mcp/McpResource';
+export { RemoteMcpClient } from './mcp/remote';
+export type { McpCallResult, McpToolDescriptor } from './mcp/remote';
+export { CheckLeakedMcpServer, serveStdio } from './mcp/server';
+export type { McpServerOptions, StdioOptions } from './mcp/server';
+export { createCheckLeakedTools, runCheckLeakedTool, toAnthropicTools, toOpenAITools, validateArgs } from './mcp/tools';
+export type { CheckLeakedTool, CreateToolsOptions, JsonSchema, ToolAnnotations } from './mcp/tools';
+export { claudeCodeMcpCommand, mcpConfig } from './mcp/config';
+export type { McpClientName, McpConfigOptions } from './mcp/config';
+export { MCP_PROTOCOL_VERSION, MCP_SUPPORTED_PROTOCOL_VERSIONS } from './mcp/protocol';
 
 // All public types
 export * from './types';

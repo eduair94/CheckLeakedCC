@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: CLI + MCP stdio smoke
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js tools > /dev/null
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | node dist/cli.js mcp | node -e "const l=require('fs').readFileSync(0,'utf8').trim().split('\n').map(JSON.parse);const t=l.find(m=>m.id===2).result.tools.length;if(t<40)throw new Error('only '+t+' tools');console.log(t+' tools')"
+      - name: Package contents
+        run: npm pack --dry-run

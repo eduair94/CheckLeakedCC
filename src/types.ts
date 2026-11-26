@@ -489,6 +489,24 @@ export interface RawSearchResponse extends Paginated<Record<string, any>> {
   auto_unlock_points_consumed?: number;
 }
 
+export interface RawSearchLinesOptions {
+  /** Blocks to unlock and parse, 1..100 (default 100). */
+  max_hits?: number;
+  case_sensitive?: boolean;
+  /** Context lines for unknown-format blocks, 0..10 (default 0). */
+  context_lines?: number;
+  /** Cursor from a previous response (search.next_cursor). */
+  cursor?: string;
+  /** Request timeout override (ms). */
+  timeout?: number;
+}
+
+export interface RawSearchLinesResponse {
+  search?: RawSearchResponse;
+  records?: Record<string, any>[];
+  [k: string]: any;
+}
+
 export interface RawPartsQuery {
   container_id: number;
   entry_path: string;
@@ -764,3 +782,6 @@ export interface UnlockByIdsInput {
   leak_ids: Array<string | number>;
   target_list_id?: number;
 }
+
+// 2.1 surface: OSINT, registry, news/site, k-anonymity, webhooks, private bots, AI, WormGPT.
+export * from './types-extended';

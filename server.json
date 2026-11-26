@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.eduair94/checkleakedcc",
+  "title": "CheckLeaked (local)",
+  "description": "Breach search, LeakRadar, OSINT, monitoring webhooks and WormGPT for CheckLeaked.cc, over stdio.",
+  "version": "2.1.0",
+  "websiteUrl": "https://checkleaked.cc",
+  "repository": {
+    "url": "https://github.com/EduAir94/CheckLeakedCC",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "checkleakedcc",
+      "version": "2.1.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }],
+      "environmentVariables": [
+        {
+          "name": "CHECKLEAKED_API_KEY",
+          "description": "CheckLeaked bot API key from https://checkleaked.cc/botLinks. Optional: without it only the free tools work.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

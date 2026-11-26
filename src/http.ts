@@ -1,39 +1,54 @@
 /**
  * Zero-dependency HTTP transport for the CheckLeaked.cc SDK, built on the
- * global `fetch` (Node 20+).
+ * global `fetch` (Node 20+, Bun, Deno, edge runtimes).
  *
  * Handles:
- *   - `api-key` header injection
+ *   - Auth header injection (`api-key` for the CheckLeaked API, `Authorization:
+ *     Bearer` for the WormGPT proxy, nothing for public routes)
+ *   - Three hosts: the bot API (`api`), the open site routes (`site`) and the
+ *     WormGPT proxy (`wormgpt`)
  *   - Query-string serialization (skips null/undefined, repeats arrays)
  *   - JSON body marshalling
  *   - Error mapping to the typed `CheckLeakedError` hierarchy
  *   - `{ error: "..." }` body detection on 2xx responses (a CheckLeaked quirk)
  *   - Retry on 429 (honoring `Retry-After`) and 5xx with exponential backoff
- *   - Per-request timeout via `AbortController`
- *   - Optional binary responses (CSV / PDF exports)
+ *   - Per-request timeout (covering the body read) and caller `AbortSignal`s
+ *   - Binary (CSV / PDF exports), text and streaming (SSE) responses
  *
  * Resource classes depend ONLY on the `IHttpClient` interface, so an alternate
  * transport can be swapped in for tests.
  */
 import {
+  CheckLeakedAuthError,
   CheckLeakedError,
   CheckLeakedNetworkError,
   CheckLeakedRateLimitError,
   errorFromResponse,
   errorMessageFromBody,
 } from './errors';
+import { SDK_VERSION } from './version';
 
 /** Minimal shape of the global `fetch`, so a custom implementation can be injected. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface CheckLeakedConfig {
-  /** Bot API key from https://checkleaked.cc/botLinks. Sent as the `api-key` header. */
-  apiKey: string;
+  /**
+   * Bot API key from https://checkleaked.cc/botLinks. Sent as the `api-key`
+   * header to the CheckLeaked API and as `Authorization: Bearer` to WormGPT.
+   * Optional only when `allowMissingApiKey` is set (public routes only).
+   */
+  apiKey?: string;
   /** Override the API base URL. Defaults to `https://api.checkleaked.cc/api`. */
   baseUrl?: string;
+  /** Override the open-routes base URL (breach registry, news, plans…). Defaults to `https://checkleaked.cc/api`. */
+  siteUrl?: string;
+  /** Override the WormGPT proxy base URL. Defaults to `https://wormgpt.checkleaked.com`. */
+  wormgptUrl?: string;
+  /** Override the hosted MCP endpoint. Defaults to `https://mcp.checkleaked.cc/mcp`. */
+  mcpUrl?: string;
   /** Per-request timeout in ms. Defaults to 120000 (2 min — some searches are slow). */
   timeout?: number;
-  /** Custom `User-Agent`. */
+  /** Custom `User-Agent`. Defaults to `checkleakedcc-node/<version>`. */
   userAgent?: string;
   /** Max retry attempts for 429 / 5xx / transient network errors. Defaults to 2. */
   maxRetries?: number;
@@ -51,9 +66,20 @@ export interface CheckLeakedConfig {
   fetch?: FetchLike;
   /** Optional undici `Dispatcher` (e.g. a `ProxyAgent`) passed through to fetch. */
   dispatcher?: unknown;
+  /**
+   * Construct without an api key. Only keyless calls (public site routes, k-anonymity
+   * checks, WormGPT model list) work; every other call throws `CheckLeakedAuthError`.
+   */
+  allowMissingApiKey?: boolean;
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+
+/** Which host a request goes to. */
+export type ApiBase = 'api' | 'site' | 'wormgpt';
+
+/** How a request authenticates. */
+export type AuthMode = 'api-key' | 'bearer' | 'none';
 
 export interface RequestOptions<TBody = unknown> {
   method: HttpMethod;
@@ -61,24 +87,42 @@ export interface RequestOptions<TBody = unknown> {
   /** Query params. null/undefined skipped, arrays repeated (`?k=a&k=b`), booleans as `true`/`false`. */
   query?: Record<string, unknown>;
   body?: TBody;
-  /** Defaults to `json`. Use `arraybuffer` for binary export downloads. */
-  responseType?: 'json' | 'arraybuffer' | 'text';
+  /**
+   * Defaults to `json`. Use `arraybuffer` for binary export downloads, `text`
+   * for plain text, and `stream` to receive the raw `Response` (for SSE).
+   */
+  responseType?: 'json' | 'arraybuffer' | 'text' | 'stream';
   headers?: Record<string, string>;
   /** Set false to disable retry for this single call. */
   retry?: boolean;
+  /** Host to call. Defaults to `api`. */
+  base?: ApiBase;
+  /** Auth header to send. Defaults to `api-key` (or `bearer` on the `wormgpt` base). */
+  auth?: AuthMode;
+  /** Per-request timeout override in ms. For `stream`, only covers the wait for headers. */
+  timeout?: number;
+  /** Caller-supplied cancellation. */
+  signal?: AbortSignal;
+  /** Per-request override of the client's `throwOnErrorBody`. */
+  throwOnErrorBody?: boolean;
 }
 
 export interface IHttpClient {
   request<TResponse>(opts: RequestOptions): Promise<TResponse>;
 }
 
-const DEFAULT_BASE_URL = 'https://api.checkleaked.cc/api';
+export const DEFAULT_BASE_URL = 'https://api.checkleaked.cc/api';
+export const DEFAULT_SITE_URL = 'https://checkleaked.cc/api';
+export const DEFAULT_WORMGPT_URL = 'https://wormgpt.checkleaked.com';
+export const DEFAULT_MCP_URL = 'https://mcp.checkleaked.cc/mcp';
 const DEFAULT_TIMEOUT = 120_000;
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY = 500;
+/** Longest `Retry-After` the client will sleep through before giving up and throwing. */
+const MAX_RETRY_AFTER_MS = 60_000;
 
 export class HttpClient implements IHttpClient {
-  private readonly baseUrl: string;
+  private readonly bases: Record<ApiBase, string>;
   private readonly timeout: number;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
@@ -86,42 +130,113 @@ export class HttpClient implements IHttpClient {
   private readonly throwOnErrorBody: boolean;
   private readonly fetchImpl: FetchLike;
   private readonly dispatcher?: unknown;
+  private readonly apiKey: string;
+  /** Hosted MCP endpoint (used by `RemoteMcpClient`). */
+  public readonly mcpUrl: string;
 
   constructor(cfg: CheckLeakedConfig) {
-    if (!cfg.apiKey || !cfg.apiKey.trim()) {
+    const key = typeof cfg.apiKey === 'string' ? cfg.apiKey.trim() : '';
+    if (!key && !cfg.allowMissingApiKey) {
       throw new CheckLeakedError('An api key is required. Get one at https://checkleaked.cc/botLinks');
     }
     const resolvedFetch = cfg.fetch ?? (globalThis.fetch as FetchLike | undefined);
     if (!resolvedFetch) {
       throw new CheckLeakedError('Global fetch is unavailable. Use Node 20+ or pass a `fetch` implementation.');
     }
+    this.apiKey = key;
     this.fetchImpl = resolvedFetch;
     this.dispatcher = cfg.dispatcher;
-    this.baseUrl = (cfg.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '');
+    this.bases = {
+      api: trimSlash(cfg.baseUrl || DEFAULT_BASE_URL),
+      site: trimSlash(cfg.siteUrl || DEFAULT_SITE_URL),
+      wormgpt: trimSlash(cfg.wormgptUrl || DEFAULT_WORMGPT_URL),
+    };
+    this.mcpUrl = cfg.mcpUrl || DEFAULT_MCP_URL;
     this.timeout = cfg.timeout ?? DEFAULT_TIMEOUT;
     this.maxRetries = cfg.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelayMs = cfg.retryDelayMs ?? DEFAULT_RETRY_DELAY;
     this.throwOnErrorBody = cfg.throwOnErrorBody !== false;
     this.defaultHeaders = {
       Accept: 'application/json',
-      'api-key': cfg.apiKey,
-      ...(cfg.userAgent ? { 'User-Agent': cfg.userAgent } : {}),
+      'User-Agent': cfg.userAgent || `checkleakedcc-node/${SDK_VERSION}`,
       ...(cfg.defaultHeaders ?? {}),
     };
   }
 
+  /** True when the client was given an api key. */
+  get hasApiKey(): boolean {
+    return this.apiKey.length > 0;
+  }
+
+  /** The configured api key (used by the remote MCP client's Bearer header). */
+  getApiKey(): string {
+    return this.apiKey;
+  }
+
+  /** Absolute base URL for one of the hosts. */
+  baseUrlFor(base: ApiBase = 'api'): string {
+    return this.bases[base];
+  }
+
+  /** Raw `fetch` with the client's dispatcher/agent wiring, for protocol clients (MCP) built on top. */
+  rawFetch(url: string, init: RequestInit): Promise<Response> {
+    if (this.dispatcher) (init as Record<string, unknown>).dispatcher = this.dispatcher;
+    return this.fetchImpl(url, init);
+  }
+
   async request<TResponse>(opts: RequestOptions): Promise<TResponse> {
-    const url = this.baseUrl + normalizePath(opts.path) + buildQueryString(opts.query);
+    const base = opts.base ?? 'api';
+    const auth: AuthMode = opts.auth ?? (base === 'wormgpt' ? 'bearer' : 'api-key');
+    if (auth !== 'none' && !this.apiKey) {
+      throw new CheckLeakedAuthError({
+        message: 'This call needs an api key. Get one at https://checkleaked.cc/botLinks',
+        status: 0,
+        body: undefined,
+        path: opts.path,
+        method: opts.method,
+      });
+    }
+    const url = this.bases[base] + normalizePath(opts.path) + buildQueryString(opts.query);
     const hasBody = opts.body !== undefined && opts.method !== 'GET';
-    const headers: Record<string, string> = { ...this.defaultHeaders, ...(opts.headers ?? {}) };
+    const headers: Record<string, string> = { ...this.defaultHeaders };
+    if (auth === 'api-key') headers['api-key'] = this.apiKey;
+    else if (auth === 'bearer') headers.Authorization = `Bearer ${this.apiKey}`;
+    if (opts.responseType === 'stream') headers.Accept = 'text/event-stream, application/json';
+    Object.assign(headers, opts.headers ?? {});
     if (hasBody) headers['Content-Type'] = 'application/json';
 
+    const timeout = opts.timeout ?? this.timeout;
     const allowRetry = opts.retry !== false;
+    // A 429 was refused before any work, so it is always safe to retry. A
+    // timeout, dropped connection or 5xx on a POST may already have spent a
+    // lookup / unlocked a leak server-side, so those are retried only for GET
+    // (or when the caller opts in with `retry: true`).
+    const idempotent = opts.method === 'GET' || opts.retry === true;
+    const pause = async (ms: number) => {
+      try {
+        await sleep(ms, opts.signal);
+      } catch {
+        throw new CheckLeakedNetworkError('Request aborted', opts.signal?.reason);
+      }
+    };
     let attempt = 0;
     while (true) {
+      if (opts.signal?.aborted) throw new CheckLeakedNetworkError('Request aborted', opts.signal.reason);
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeout);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeout);
+      const onCallerAbort = () => controller.abort();
+      opts.signal?.addEventListener('abort', onCallerAbort, { once: true });
+      const cleanup = () => {
+        clearTimeout(timer);
+        opts.signal?.removeEventListener('abort', onCallerAbort);
+      };
+
       let res: Response;
+      let data: unknown;
       try {
         const init: RequestInit = {
           method: opts.method,
@@ -131,24 +246,34 @@ export class HttpClient implements IHttpClient {
         };
         if (this.dispatcher) (init as Record<string, unknown>).dispatcher = this.dispatcher;
         res = await this.fetchImpl(url, init);
+        if (opts.responseType === 'stream' && res.ok) {
+          // The stream outlives this call. Drop the timer and our listener; the
+          // stream reader (`readSse`) takes the caller's signal and cancels the
+          // body itself, so nothing here keeps a reference to this request.
+          cleanup();
+          return res as unknown as TResponse;
+        }
+        data = await parseBody(res, opts.responseType === 'stream' ? 'json' : opts.responseType);
       } catch (raw) {
-        clearTimeout(timer);
+        cleanup();
         const err = raw as Error;
-        const isAbort = err?.name === 'AbortError';
-        if (allowRetry && attempt < this.maxRetries) {
-          await sleep(this.backoff(attempt));
+        const callerAborted = !!opts.signal?.aborted;
+        if (!callerAborted && allowRetry && idempotent && attempt < this.maxRetries) {
+          await pause(this.backoff(attempt));
           attempt++;
           continue;
         }
-        throw new CheckLeakedNetworkError(isAbort ? `Request timed out after ${this.timeout}ms` : err?.message || 'Network error', err);
-      } finally {
-        clearTimeout(timer);
+        const msg = callerAborted
+          ? 'Request aborted'
+          : timedOut
+            ? `Request timed out after ${timeout}ms`
+            : err?.message || 'Network error';
+        throw new CheckLeakedNetworkError(msg, err);
       }
-
-      const data = await parseBody(res, opts.responseType);
+      cleanup();
 
       if (res.ok) {
-        if (this.throwOnErrorBody && opts.responseType !== 'arraybuffer') {
+        if ((opts.throwOnErrorBody ?? this.throwOnErrorBody) && opts.responseType !== 'arraybuffer') {
           const msg = errorMessageFromBody(data);
           if (msg) throw errorFromResponse({ status: 0, body: data, path: opts.path, method: opts.method });
         }
@@ -157,13 +282,15 @@ export class HttpClient implements IHttpClient {
 
       const retryAfterMs = parseRetryAfter(res.headers);
       const apiErr = errorFromResponse({ status: res.status, body: data, path: opts.path, method: opts.method, retryAfterMs });
+      const isRateLimit = apiErr instanceof CheckLeakedRateLimitError;
       const shouldRetry =
         allowRetry &&
         attempt < this.maxRetries &&
-        (apiErr instanceof CheckLeakedRateLimitError || (res.status >= 500 && res.status < 600));
+        (isRateLimit || (idempotent && res.status >= 500 && res.status < 600)) &&
+        !(isRateLimit && retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS);
       if (shouldRetry) {
-        const wait = apiErr instanceof CheckLeakedRateLimitError && apiErr.retryAfterMs ? apiErr.retryAfterMs : this.backoff(attempt);
-        await sleep(wait);
+        const wait = isRateLimit && retryAfterMs ? retryAfterMs : this.backoff(attempt);
+        await pause(wait);
         attempt++;
         continue;
       }
@@ -180,12 +307,16 @@ export class HttpClient implements IHttpClient {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function trimSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
 function normalizePath(path: string): string {
   if (!path) return '';
   return path.charAt(0) === '/' ? path : '/' + path;
 }
 
-function buildQueryString(query?: Record<string, unknown>): string {
+export function buildQueryString(query?: Record<string, unknown>): string {
   if (!query) return '';
   const parts: string[] = [];
   for (const k of Object.keys(query)) {
@@ -203,11 +334,13 @@ function buildQueryString(query?: Record<string, unknown>): string {
   return parts.length ? '?' + parts.join('&') : '';
 }
 
-async function parseBody(res: Response, responseType?: RequestOptions['responseType']): Promise<unknown> {
-  if (responseType === 'arraybuffer') return res.arrayBuffer();
+async function parseBody(res: Response, responseType?: 'json' | 'arraybuffer' | 'text'): Promise<unknown> {
+  if (responseType === 'arraybuffer' && res.ok) return res.arrayBuffer();
   const text = await res.text();
   if (!text) return undefined;
-  if (responseType === 'text') return text;
+  if (responseType === 'text' && res.ok) return text;
+  // Long-running CheckLeaked routes (worm_report) keep the connection alive with
+  // newline heartbeats before the JSON body; JSON.parse tolerates the whitespace.
   try {
     return JSON.parse(text);
   } catch {
@@ -225,6 +358,18 @@ function parseRetryAfter(headers: Headers): number | undefined {
   return undefined;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Wait `ms`, rejecting early if `signal` aborts. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }

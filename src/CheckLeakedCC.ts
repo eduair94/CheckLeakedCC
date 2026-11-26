@@ -1,7 +1,15 @@
-import { CheckLeakedConfig, HttpClient, IHttpClient } from './http';
+import { CheckLeakedConfig, HttpClient } from './http';
 import { LeakRadarClient } from './leakradar/LeakRadarClient';
+import { McpResource } from './mcp/McpResource';
+import { AiResource } from './resources/AiResource';
+import { BreachesResource } from './resources/BreachesResource';
 import { CoreResource } from './resources/CoreResource';
+import { KanonResource } from './resources/KanonResource';
+import { PrivateBotsResource } from './resources/PrivateBotsResource';
+import { NewsResource, SiteResource } from './resources/SiteResource';
 import { NativeTrackingResource } from './resources/TrackingResource';
+import { WebhooksResource } from './resources/WebhooksResource';
+import { WormGPTClient } from './wormgpt/WormGPTClient';
 import type {
   CrackHashResult,
   DehashedOptions,
@@ -13,9 +21,14 @@ import type {
   IpLookupResult,
   LeakCheckOptions,
   LeakCheckType,
+  NameInsightResult,
   SearchResult,
   ValidResult,
+  WhoisResult,
 } from './types';
+
+/** Env var read by {@link CheckLeakedCC.fromEnv} and the bundled MCP server. */
+export const API_KEY_ENV = 'CHECKLEAKED_API_KEY';
 
 /**
  * Official CheckLeaked.cc SDK client.
@@ -25,15 +38,12 @@ import type {
  *
  * const api = new CheckLeakedCC('YOUR-API-KEY');
  *
- * // classic search
- * await api.experimental('john@example.com', 'email');
- * await api.dehashed('john@example.com', 'email');
- *
- * // breach monitoring
- * await api.tracking.add('example.com', 'domain');
- *
- * // LeakRadar
- * await api.leakradar.domain.report('example.com');
+ * await api.experimental('john@example.com', 'email');   // breach search
+ * await api.tracking.add('example.com', 'domain');       // monitoring
+ * await api.leakradar.domain.report('example.com');      // LeakRadar
+ * await api.wormgpt.ask('Summarize CVE-2024-3094');      // WormGPT
+ * await api.ai.investigate('john@example.com');          // AI OSINT dossier
+ * api.mcp.anthropicTools();                              // MCP / tool use
  * ```
  *
  * Construct with just the key, or a config object for full control:
@@ -41,13 +51,31 @@ import type {
  */
 export class CheckLeakedCC {
   /** Underlying transport (exposed for advanced/custom requests). */
-  public readonly http: IHttpClient;
+  public readonly http: HttpClient;
   /** Core search endpoints (also surfaced directly on the client). */
   public readonly core: CoreResource;
   /** Breach monitoring — `tracking` (native) and `tracking.leakradar`. */
   public readonly tracking: NativeTrackingResource;
   /** The full LeakRadar integration. */
   public readonly leakradar: LeakRadarClient;
+  /** Signed tracking webhook (Slack / Discord / Teams / Google Chat / JSON). */
+  public readonly webhooks: WebhooksResource;
+  /** Your own Discord / Telegram bot running the CheckLeaked commands (Pro / Plus). */
+  public readonly privateBots: PrivateBotsResource;
+  /** Public breach registry (free). */
+  public readonly breaches: BreachesResource;
+  /** Daily cybersecurity briefing (free). */
+  public readonly news: NewsResource;
+  /** Plans, FAQ, changelog, stats (free). */
+  public readonly site: SiteResource;
+  /** Free k-anonymity password / email checks — the secret never leaves the process. */
+  public readonly kanon: KanonResource;
+  /** Deep Search AI: WormGPT investigation + structured dossier + PDF (Pro). */
+  public readonly ai: AiResource;
+  /** WormGPT chat (OpenAI-compatible), streaming, agent tools, quota. */
+  public readonly wormgpt: WormGPTClient;
+  /** MCP: hosted-server client, tool catalog, local stdio server, client configs. */
+  public readonly mcp: McpResource;
 
   constructor(config: string | CheckLeakedConfig) {
     const cfg: CheckLeakedConfig = typeof config === 'string' ? { apiKey: config } : config;
@@ -55,6 +83,25 @@ export class CheckLeakedCC {
     this.core = new CoreResource(this.http);
     this.tracking = new NativeTrackingResource(this.http);
     this.leakradar = new LeakRadarClient(this.http);
+    this.webhooks = new WebhooksResource(this.http);
+    this.privateBots = new PrivateBotsResource(this.http);
+    this.breaches = new BreachesResource(this.http);
+    this.news = new NewsResource(this.http);
+    this.site = new SiteResource(this.http);
+    this.kanon = new KanonResource(this.http);
+    this.ai = new AiResource(this.http);
+    this.wormgpt = new WormGPTClient(this.http);
+    this.mcp = new McpResource(this, this.http);
+  }
+
+  /**
+   * Build a client from `process.env.CHECKLEAKED_API_KEY`. With no key set,
+   * returns a keyless client (free tools only) when `allowMissingApiKey` is true,
+   * otherwise throws.
+   */
+  static fromEnv(overrides: Omit<CheckLeakedConfig, 'apiKey'> = {}): CheckLeakedCC {
+    const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env || {};
+    return new CheckLeakedCC({ ...overrides, apiKey: env[API_KEY_ENV] || env.CHECKLEAKED_KEY || '' });
   }
 
   // -------------------------------------------------------------------------
@@ -103,5 +150,15 @@ export class CheckLeakedCC {
   /** IP geolocation + ASN + WHOIS. Omit `ip` for your own IP. */
   ip(ip?: string): Promise<IpLookupResult> {
     return this.core.ip(ip);
+  }
+
+  /** WHOIS / registration lookup for a domain. */
+  whois(domain: string): Promise<WhoisResult> {
+    return this.core.whois(domain);
+  }
+
+  /** Gender / origin / meaning insight for a personal name (free). */
+  nameInsight(name: string, opts?: { lang?: string }): Promise<NameInsightResult> {
+    return this.core.nameInsight(name, opts);
   }
 }

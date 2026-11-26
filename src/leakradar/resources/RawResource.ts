@@ -7,6 +7,8 @@ import type {
   RawPartsQuery,
   RawSearchOptions,
   RawSearchRequest,
+  RawSearchLinesOptions,
+  RawSearchLinesResponse,
   RawSearchResponse,
 } from '../../types';
 
@@ -68,6 +70,28 @@ export class RawResource extends BaseResource {
       method: 'POST',
       path: '/leakradar/search/raw/export',
       body: { ...request, target },
+    });
+  }
+
+  /**
+   * Search raw blocks, unlock the matches and return the parsed leak records
+   * (credentials, cookies…) in one call — use this instead of `search` +
+   * `getPart` when you want the actual lines. Pro plan; 1 credit per call.
+   */
+  searchLines(request: RawSearchRequest, opts: RawSearchLinesOptions = {}): Promise<RawSearchLinesResponse> {
+    // max_hits / case_sensitive / context_lines / cursor are read from the
+    // QUERY STRING; the body is forwarded verbatim to the upstream raw search.
+    return this.http.request<RawSearchLinesResponse>({
+      method: 'POST',
+      path: '/leakradar/search/raw/lines',
+      body: request,
+      query: {
+        max_hits: opts.max_hits,
+        case_sensitive: opts.case_sensitive,
+        context_lines: opts.context_lines,
+        cursor: opts.cursor,
+      },
+      timeout: opts.timeout,
     });
   }
 

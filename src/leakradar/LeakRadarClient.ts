@@ -87,6 +87,26 @@ export class LeakRadarClient {
     });
   }
 
+  /** Your saved raw stealer-log searches (deduplicated by query), newest first. */
+  rawSearchHistory(
+    opts: { page?: number; limit?: number; q?: string; sort?: string; order?: 1 | -1 } = {},
+  ): Promise<Paginated<Record<string, any>>> {
+    return this.http.request<Paginated<Record<string, any>>>({
+      method: 'GET',
+      path: '/leakradar/search-history/raw',
+      query: { page: opts.page, limit: opts.limit, q: opts.q, sort: opts.sort, order: opts.order },
+    });
+  }
+
+  /** Delete one saved raw search (by its `hash`) or all of them (`{ all: true }`). */
+  deleteRawSearchHistory(input: { hash?: string; all?: boolean }): Promise<{ success: boolean; deleted: number }> {
+    return this.http.request<{ success: boolean; deleted: number }>({
+      method: 'POST',
+      path: '/leakradar/search-history/raw/delete',
+      body: { hash: input.hash, all: input.all },
+    });
+  }
+
   /** Directly unlock specific leaks by id (charged per leak). */
   unlock(input: UnlockByIdsInput): Promise<LeakDetails[] | Record<string, any>> {
     return this.http.request<LeakDetails[] | Record<string, any>>({

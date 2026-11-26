@@ -10,8 +10,10 @@ import type {
   IpLookupResult,
   LeakCheckOptions,
   LeakCheckType,
+  NameInsightResult,
   SearchResult,
   ValidResult,
+  WhoisResult,
 } from '../types';
 
 /**
@@ -108,5 +110,21 @@ export class CoreResource extends BaseResource {
    */
   ip(ip?: string): Promise<IpLookupResult> {
     return this.http.request<IpLookupResult>({ method: 'GET', path: '/ip', query: { ip } });
+  }
+
+  /** WHOIS / registration lookup for a domain: registrar, dates, name servers, status. */
+  whois(domain: string): Promise<WhoisResult> {
+    return this.http.request<WhoisResult>({ method: 'GET', path: '/domain-whois', query: { domain: domain.trim() } });
+  }
+
+  /** Gender, origin and meaning of a personal name (offline dictionary + Wikidata). Free, open route. */
+  nameInsight(name: string, opts: { lang?: string } = {}): Promise<NameInsightResult> {
+    return this.http.request<NameInsightResult>({
+      method: 'GET',
+      path: '/name/insight',
+      query: { name: name.trim(), lang: opts.lang },
+      base: 'site',
+      auth: 'none',
+    });
   }
 }

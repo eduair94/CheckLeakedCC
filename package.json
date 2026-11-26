@@ -1,11 +1,14 @@
 {
   "name": "checkleakedcc",
-  "version": "2.0.0",
-  "description": "Official Node.js / TypeScript SDK for checkleaked.cc — data-breach search (Dehashed, Snusbase/experimental), hash cracking, GHunt, breach monitoring/tracking, and the full LeakRadar integration (email/domain/advanced/raw search, unlocked archive, notifications, dark web).",
+  "version": "2.1.0",
+  "description": "Official Node.js / TypeScript SDK + CLI + MCP server for checkleaked.cc — data-breach search (LeakCheck, Dehashed, Snusbase), LeakRadar stealer logs, hash cracking, GHunt, WHOIS, breach monitoring with signed webhooks, WormGPT AI chat & OSINT investigations, and a zero-dependency MCP server (npx checkleakedcc mcp).",
   "type": "commonjs",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "checkleakedcc": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": {
@@ -35,7 +38,9 @@
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build",
     "preversion": "npm run typecheck && npm run lint",
     "version": "npm run format && git add -A src",
-    "postversion": "git push && git push --tags"
+    "postversion": "git push && git push --tags",
+    "test:smoke": "node test/smoke.mjs",
+    "pack:check": "npm pack --dry-run"
   },
   "repository": {
     "type": "git",
@@ -55,7 +60,21 @@
     "dark-web",
     "credential",
     "leak",
-    "monitoring"
+    "monitoring",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "wormgpt",
+    "ai",
+    "llm",
+    "claude",
+    "openai",
+    "agent",
+    "tool-use",
+    "webhooks",
+    "whois",
+    "ghunt",
+    "cli"
   ],
   "author": "",
   "license": "MIT",
@@ -80,6 +99,10 @@
     "typescript-eslint": "^8.62.1"
   },
   "files": [
-    "dist"
-  ]
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "mcpName": "io.github.eduair94/checkleakedcc"
 }

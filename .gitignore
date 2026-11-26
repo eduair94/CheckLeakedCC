@@ -5,4 +5,4 @@ node_modules
 # Live capture output — contains real breach data (PII). Never commit.
 e2e/out.json
 e2e/samples/
-e2e/qt/
+e2e/qt/*.tgz

@@ -43,6 +43,11 @@ export interface ApiErrorInit {
 export class CheckLeakedApiError extends CheckLeakedError {
   /** HTTP status code (or 0 when the error came from an `{ error }` body on a 2xx response). */
   public readonly status: number;
+  /**
+   * Stable machine code when the API answered one (e.g. `worm_pro_required`,
+   * `report_throttled`, `rate_limited`, `connect_expired`), otherwise undefined.
+   */
+  public readonly code?: string;
   /** Raw response body. */
   public readonly body: unknown;
   public readonly path?: string;
@@ -51,6 +56,7 @@ export class CheckLeakedApiError extends CheckLeakedError {
     super(opts.message, opts.cause);
     this.name = 'CheckLeakedApiError';
     this.status = opts.status;
+    this.code = errorCodeFromBody(opts.body);
     this.body = opts.body;
     this.path = opts.path;
     this.method = opts.method;
@@ -114,7 +120,31 @@ export function errorFromResponse(opts: {
   if (opts.status === 400 || opts.status === 422) return new CheckLeakedValidationError(base);
   if (opts.status === 429) return new CheckLeakedRateLimitError({ ...base, retryAfterMs: opts.retryAfterMs });
   if (opts.status >= 500) return new CheckLeakedServerError(base);
+  // A 2xx `{ error: "<code>" }` envelope: narrow by the machine code when there is one.
+  const code = errorCodeFromBody(opts.body);
+  if (code) {
+    if (AUTH_CODE.test(code)) return new CheckLeakedAuthError(base);
+    if (RATE_CODE.test(code)) return new CheckLeakedRateLimitError({ ...base, retryAfterMs: opts.retryAfterMs });
+    if (VALIDATION_CODE.test(code)) return new CheckLeakedValidationError(base);
+  }
   return new CheckLeakedApiError(base);
+}
+
+const AUTH_CODE = /(^|_)(unauthorized|forbidden|pro_required|plan_required|expired)$/;
+const RATE_CODE = /(^|_)(throttled|busy|quota|rate_limited)$/;
+const VALIDATION_CODE = /(^|_)(no_subject|no_findings|too_large|invalid)$/;
+
+/**
+ * The machine code of an error envelope: `{ error: "worm_pro_required" }` →
+ * `worm_pro_required`. Human sentences (spaces, capitals) are not codes.
+ */
+export function errorCodeFromBody(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const b = body as Record<string, unknown>;
+  for (const v of [b.code, b.error]) {
+    if (typeof v === 'string' && /^[a-z][a-z0-9_.-]{1,63}$/.test(v)) return v;
+  }
+  return undefined;
 }
 
 /**

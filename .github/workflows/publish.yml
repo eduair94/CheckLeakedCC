@@ -1,0 +1,30 @@
+# Publishes to npm when a `v*` tag is pushed, using npm trusted publishing (OIDC):
+# no NPM_TOKEN secret. One-time setup on npmjs.com → checkleakedcc → Settings →
+# Trusted publishing → GitHub Actions: owner EduAir94, repo CheckLeakedCC,
+# workflow publish.yml. Then: `npm version minor && git push --follow-tags`.
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - name: Tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - run: npm publish --access public
