@@ -380,6 +380,8 @@ You can connect in two ways. Both use the same key and the same tool names.
 
 Claude Code: `claude mcp add checkleaked --env CHECKLEAKED_API_KEY=YOUR_API_KEY -- npx -y checkleakedcc mcp`
 
+Gemini CLI: `gemini extensions install https://github.com/eduair94/CheckLeakedCC` (it asks for the optional API key on install).
+
 To print a ready-made config, run `npx checkleakedcc mcp-config <claude-desktop|claude-code|cursor|vscode|windsurf> [--local]`. Without `--local`, it prints the hosted-server config.
 
 The local server exposes **52 tools**, covering every SDK area: search, tracking, LeakRadar, OSINT, the registry, webhooks, private bots, WormGPT chat and AI investigations. Every tool carries MCP annotations: `readOnlyHint` marks free lookups, and `destructiveHint` marks deletes. The free tools work without a key. Flags:

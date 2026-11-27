@@ -1,0 +1,19 @@
+{
+  "name": "checkleaked",
+  "version": "2.1.0",
+  "description": "Data-breach search, password exposure checks and OSINT lookups from CheckLeaked.cc. Free tools work without a key.",
+  "mcpServers": {
+    "checkleaked": {
+      "command": "npx",
+      "args": ["-y", "checkleakedcc@latest", "mcp"]
+    }
+  },
+  "settings": [
+    {
+      "name": "CheckLeaked API key",
+      "description": "Optional. Bot token from https://checkleaked.cc/botLinks. Without it only the free tools work (breach registry, breach news, k-anonymity password and email checks).",
+      "envVar": "CHECKLEAKED_API_KEY",
+      "sensitive": true
+    }
+  ]
+}
