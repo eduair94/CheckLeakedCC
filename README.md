@@ -1,5 +1,7 @@
 # checkleakedcc
 
+[![npm](https://img.shields.io/npm/v/checkleakedcc)](https://www.npmjs.com/package/checkleakedcc) [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-cc.checkleaked%2Fcheckleaked--mcp-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=cc.checkleaked/checkleaked-mcp) [![CheckLeaked MCP connector](https://glama.ai/mcp/connectors/cc.checkleaked/checkleaked-mcp/badges/score.svg)](https://glama.ai/mcp/connectors/cc.checkleaked/checkleaked-mcp)
+
 Official Node.js / TypeScript SDK, CLI and **MCP server** for **[checkleaked.cc](https://checkleaked.cc)**:
 
 - **Breach search**: LeakCheck, Dehashed and Snusbase, plus the full **LeakRadar** integration (stealer logs, domain intelligence, the unlocked archive, notifications, dark web).
